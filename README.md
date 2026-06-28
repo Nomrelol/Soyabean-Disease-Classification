@@ -26,7 +26,7 @@ A two-stage deep learning system for automated soybean disease detection, develo
 
 Single-stage disease classifiers fail in field conditions because they assign a disease label to every input — including soil, hands, stems, and unrelated objects — with no way to reject non-leaf images. This project decomposes the problem into two sequential stages:
 
-- **Stage 1 — Leaf Detection:** A ResNet binary classifier accepts only images containing a leaf and rejects everything else.
+- **Stage 1 — Leaf Detection:** A **ResNet18** binary classifier accepts only images containing a leaf and rejects everything else.
 - **Stage 2 — Disease Classification:** A MobileNetV2 multi-class classifier runs only on confirmed leaf images, assigning one of four disease/health labels.
 
 This design eliminates spurious predictions, reduces wasted inference, and produces a system lightweight enough for edge and mobile deployment.
@@ -84,7 +84,7 @@ Input Image
 | Validation Accuracy | **99.07%** |
 | Comparison (YOLO) | ~94% |
 
-ResNet was selected over YOLO because the task requires only presence/absence detection (no bounding box needed), where a classification model is both faster and more accurate.
+ResNet18 was selected over YOLO because the task requires only presence/absence detection (no bounding box needed), where a classification model is both faster and more accurate.
 
 ### Stage 2 — Disease Classifier (MobileNetV2)
 
@@ -134,6 +134,8 @@ Both datasets are sourced from Kaggle:
 ```
 Soyabean-Disease-Classification/
 ├── internship-different.ipynb                          # Main training and evaluation notebook
+├── inference.py                                        # Standalone two-stage inference script
+├── requirements.txt                                    # Pinned Python dependencies
 ├── best_mobilenet_soybean_model.pth                    # Stage 2 base checkpoint
 ├── best_mobilenet_soybean_model_finetuned.pth          # Stage 2 fine-tuned checkpoint
 ├── best_mobilenet_soybean_model_trained_all_layers.pth # Stage 2 all-layers checkpoint
@@ -147,7 +149,7 @@ Soyabean-Disease-Classification/
 
 **Requirements:**
 ```bash
-pip install torch torchvision pillow matplotlib scikit-learn
+pip install -r requirements.txt
 ```
 
 **Run the notebook:**
@@ -157,16 +159,12 @@ jupyter notebook internship-different.ipynb
 
 The notebook covers end-to-end: dataset loading, preprocessing, Stage 1 training, Stage 2 training, evaluation, and qualitative prediction visualization.
 
-**Inference pipeline (conceptual):**
-```python
-# Stage 1 — leaf check
-leaf_pred = stage1_model(image)
-if leaf_pred == "non_leaf":
-    return "Rejected: not a leaf"
-
-# Stage 2 — disease classification
-disease_pred = stage2_model(image)
-return disease_pred  # Healthy / Yellow Mosaic / Rust / SDS
+**Standalone inference (no Jupyter needed):**
+```bash
+python inference.py \
+    --image path/to/your/leaf.jpg \
+    --stage1_weights leaf_classifier_resnet18.pth \
+    --stage2_weights best_mobilenet_soybean_model_finetuned.pth
 ```
 
 ---
@@ -198,8 +196,16 @@ model.eval()
 
 **Why two stages instead of one?** Single-stage classifiers assign disease labels to all inputs regardless of content. In field conditions, cameras capture soil, hands, stems, and equipment — all of which a single classifier will confidently misclassify as diseased. The Stage 1 gate eliminates this entire failure mode.
 
-**Why ResNet for Stage 1?** ResNet outperforms YOLO (99.07% vs ~94%) for the leaf/non-leaf binary task because bounding box localization is unnecessary — presence/absence detection is a simpler problem that a lightweight classifier handles better with less compute.
+**Why ResNet18 for Stage 1?** ResNet18 outperforms YOLO (99.07% vs ~94%) for the leaf/non-leaf binary task because bounding box localization is unnecessary — presence/absence detection is a simpler problem that a lightweight classifier handles better with less compute.
 
 **Why MobileNetV2 for Stage 2?** MobileNetV2's depthwise separable convolutions keep parameter count low while preserving discriminative texture and color features critical for disease differentiation. It is directly exportable to TFLite/ONNX for edge deployment on mobile or embedded agricultural devices.
 
 **Why only 10 epochs?** Training was deliberately kept conservative. The close alignment between validation accuracy (87.10%) and test accuracy (86.32%) confirms no overfitting — the model has learned generalizable disease patterns rather than dataset-specific artifacts.
+
+---
+
+## Known Limitations & Future Work
+
+- **Yellow Mosaic recall is 0.55** — the weakest class due to visual similarity with Rust. Planned fix: class-weighted `CrossEntropyLoss` or Focal Loss.
+- **Stage 1 weights not yet uploaded** — `leaf_classifier_resnet18.pth` needs to be added for end-to-end reproducibility.
+- **No ONNX/TFLite export** — model export for edge deployment is a planned next step.
